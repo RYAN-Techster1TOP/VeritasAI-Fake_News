@@ -4,15 +4,13 @@ import { env } from '../config/env.js';
 import { AppError } from '../middleware/errorMiddleware.js';
 
 export const extractTextFromImage = async (file) => {
-  if (!env.ocrApiKey) {
-    // Lightweight placeholder when OCR key is not configured
-    return 'Sample OCR output: authorities confirm the circulating claim is unverified.';
-  }
-
   try {
     const form = new FormData();
     form.append('language', 'eng');
     form.append('isOverlayRequired', 'false');
+    form.append('detectOrientation', 'true');
+    form.append('scale', 'true');
+    form.append('OCREngine', '2');
     form.append('file', file.buffer, {
       filename: file.originalname,
       contentType: file.mimetype,
@@ -21,15 +19,30 @@ export const extractTextFromImage = async (file) => {
     const response = await axios.post(env.ocrApiUrl, form, {
       headers: {
         ...form.getHeaders(),
-        apikey: env.ocrApiKey,
+        apikey: env.ocrApiKey || 'helloworld',
       },
       timeout: 30000,
     });
 
-    const parsed = response.data?.ParsedResults?.[0]?.ParsedText || '';
-    return parsed.trim();
+    if (response.data?.IsErroredOnProcessing) {
+      const errDetail = response.data?.ErrorMessage?.[0] || 'OCR engine failed to parse image';
+      throw new AppError(`OCR processing error: ${errDetail}`, 422);
+    }
+
+    const parsedResults = response.data?.ParsedResults;
+    if (!parsedResults || !parsedResults.length) {
+      throw new AppError('No text parsed from the uploaded image', 422);
+    }
+
+    const text = parsedResults.map((r) => r.ParsedText).join('\n').trim();
+    if (!text) {
+      throw new AppError('Image contained no readable textual content', 422);
+    }
+
+    return text;
   } catch (error) {
+    if (error instanceof AppError) throw error;
     const detail = error.response?.data?.ErrorMessage || error.message;
-    throw new AppError(`OCR extraction failed: ${detail}`, 502);
+    throw new AppError(`OCR extraction service error: ${detail}`, 502);
   }
 };

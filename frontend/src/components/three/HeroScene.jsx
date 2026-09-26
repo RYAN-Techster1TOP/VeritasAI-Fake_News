@@ -1,6 +1,6 @@
 import { Canvas, useFrame } from '@react-three/fiber';
 import { Float, MeshDistortMaterial, Sphere } from '@react-three/drei';
-import { useRef } from 'react';
+import { useRef, useState, useEffect } from 'react';
 
 function Orb() {
   const ref = useRef();
@@ -28,9 +28,37 @@ function Orb() {
 }
 
 export default function HeroScene() {
+  const [hasWebGL, setHasWebGL] = useState(true);
+
+  useEffect(() => {
+    try {
+      const canvas = document.createElement('canvas');
+      const supports = Boolean(
+        window.WebGLRenderingContext &&
+          (canvas.getContext('webgl') || canvas.getContext('experimental-webgl'))
+      );
+      setHasWebGL(supports);
+    } catch {
+      setHasWebGL(false);
+    }
+  }, []);
+
+  if (!hasWebGL) {
+    return (
+      <div className="absolute inset-0 -z-10 flex items-center justify-center opacity-60">
+        <div className="h-72 w-72 rounded-full bg-gradient-to-tr from-ink-500 via-emerald-600 to-ink-300 blur-3xl" />
+      </div>
+    );
+  }
+
   return (
     <div className="absolute inset-0 -z-10 opacity-80">
-      <Canvas camera={{ position: [0, 0, 4.2], fov: 45 }}>
+      <Canvas
+        camera={{ position: [0, 0, 4.2], fov: 45 }}
+        onCreated={({ gl }) => {
+          gl.setClearColor('#0f1724', 0);
+        }}
+      >
         <ambientLight intensity={0.55} />
         <directionalLight position={[4, 3, 2]} intensity={1.2} />
         <pointLight position={[-3, -2, -2]} intensity={0.6} color="#1f8a5b" />

@@ -5,7 +5,7 @@ import { extractTextFromImage } from '../services/ocrService.js';
 import { fetchArticleText } from '../services/urlService.js';
 
 const mapVerdict = (labels = []) => {
-  if (!labels.length) {
+  if (!labels || !labels.length) {
     return { verdict: 'uncertain', confidence: 0 };
   }
 
@@ -13,33 +13,57 @@ const mapVerdict = (labels = []) => {
   const label = String(top.label || '').toLowerCase();
   const confidence = Number(top.score) || 0;
 
-  if (label.includes('fake') || label.includes('hate') || label.includes('toxic')) {
-    return { verdict: 'fake', confidence };
+  if (
+    label.includes('fake') ||
+    label.includes('hate') ||
+    label.includes('toxic') ||
+    label.includes('unreliable') ||
+    label.includes('false') ||
+    label === 'label_0'
+  ) {
+    return { verdict: 'fake', confidence: Math.min(Math.max(confidence, 0), 1) };
   }
-  if (label.includes('real') || label.includes('true') || label.includes('neutral')) {
-    return { verdict: 'real', confidence };
+
+  if (
+    label.includes('real') ||
+    label.includes('true') ||
+    label.includes('neutral') ||
+    label.includes('reliable') ||
+    label.includes('non-hate') ||
+    label === 'label_1'
+  ) {
+    return { verdict: 'real', confidence: Math.min(Math.max(confidence, 0), 1) };
   }
-  return { verdict: 'uncertain', confidence };
+
+  return { verdict: 'uncertain', confidence: Math.min(Math.max(confidence, 0), 1) };
 };
 
 export const analyzeText = async (req, res, next) => {
   try {
     const { text } = req.body;
     if (!text?.trim()) {
-      throw new AppError('Text content is required', 400);
+      throw new AppError('Text content is required for analysis', 400);
     }
 
-    const labels = await analyzeTextContent(text);
+    const labels = await analyzeTextContent(text.trim());
     const { verdict, confidence } = mapVerdict(labels);
+
+    const topLabel = labels[0]?.label || 'n/a';
+    const explanation =
+      verdict === 'fake'
+        ? `Model detected indicators of fabricated or misleading material (signal: ${topLabel}).`
+        : verdict === 'real'
+        ? `Model detected indicators consistent with credible reporting (signal: ${topLabel}).`
+        : `Model signals are inconclusive. Cross-referencing recommended (signal: ${topLabel}).`;
 
     const analysis = await Analysis.create({
       user: req.user._id,
       inputType: 'text',
-      sourceText: text,
+      sourceText: text.trim(),
       verdict,
       confidence,
       labels,
-      explanation: `Primary model signal: ${labels[0]?.label || 'n/a'}`,
+      explanation,
     });
 
     res.status(201).json({ success: true, analysis });
@@ -52,22 +76,25 @@ export const analyzeUrl = async (req, res, next) => {
   try {
     const { url } = req.body;
     if (!url?.trim()) {
-      throw new AppError('URL is required', 400);
+      throw new AppError('Article URL is required', 400);
     }
 
-    const articleText = await fetchArticleText(url);
+    const articleText = await fetchArticleText(url.trim());
     const labels = await analyzeTextContent(articleText);
     const { verdict, confidence } = mapVerdict(labels);
+
+    const topLabel = labels[0]?.label || 'n/a';
+    const explanation = `Scraped and analyzed extracted article body from URL. Model signal: ${topLabel}.`;
 
     const analysis = await Analysis.create({
       user: req.user._id,
       inputType: 'url',
-      sourceUrl: url,
+      sourceUrl: url.trim(),
       sourceText: articleText.slice(0, 5000),
       verdict,
       confidence,
       labels,
-      explanation: 'Analyzed extracted article body from URL',
+      explanation,
     });
 
     res.status(201).json({ success: true, analysis });
@@ -84,11 +111,14 @@ export const analyzeImage = async (req, res, next) => {
 
     const extractedText = await extractTextFromImage(req.file);
     if (!extractedText?.trim()) {
-      throw new AppError('No readable text found in image', 422);
+      throw new AppError('No readable text could be extracted from the uploaded image', 422);
     }
 
     const labels = await analyzeTextContent(extractedText);
     const { verdict, confidence } = mapVerdict(labels);
+
+    const topLabel = labels[0]?.label || 'n/a';
+    const explanation = `OCR extracted text and analyzed content. Model signal: ${topLabel}.`;
 
     const analysis = await Analysis.create({
       user: req.user._id,
@@ -99,8 +129,9 @@ export const analyzeImage = async (req, res, next) => {
       verdict,
       confidence,
       labels,
-      explanation: 'OCR extracted text then scored via Hugging Face model',
+      explanation,
       metadata: {
+        originalName: req.file.originalname,
         mimeType: req.file.mimetype,
         size: req.file.size,
       },
@@ -118,7 +149,7 @@ export const getHistory = async (req, res, next) => {
       .sort({ createdAt: -1 })
       .limit(50);
 
-    res.json({ success: true, analyses });
+    res.json({ success: true, count: analyses.length, analyses });
   } catch (error) {
     next(error);
   }
@@ -132,7 +163,7 @@ export const getAnalysisById = async (req, res, next) => {
     });
 
     if (!analysis) {
-      throw new AppError('Analysis not found', 404);
+      throw new AppError('Analysis record not found', 404);
     }
 
     res.json({ success: true, analysis });
