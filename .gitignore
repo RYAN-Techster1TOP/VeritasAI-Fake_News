@@ -1,0 +1,48 @@
+# Dependencies
+node_modules/
+*/node_modules/
+
+# Environment
+.env
+.env.local
+.env.*.local
+backend/.env
+frontend/.env
+
+# Build
+dist/
+build/
+*/dist/
+*/build/
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+
+# OS / IDE
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Coverage / cache
+coverage/
+.cache/
+.vite/
+*.tsbuildinfo
+
+# Uploads / temp
+backend/uploads/
+backend/tmp/
+*.tmp
+node_modules/ 
+backend/node_modules/ 
+frontend/node_modules/ 
+.env 
+backend/.env 
+frontend/.env 
+dist/ 
+.DS_Store 
