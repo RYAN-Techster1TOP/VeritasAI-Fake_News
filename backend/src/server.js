@@ -10,8 +10,6 @@ import authRoutes from './routes/authRoutes.js';
 import analysisRoutes from './routes/analysisRoutes.js';
 import userRoutes from './routes/userRoutes.js';
 
-await connectDB();
-
 const app = express();
 
 app.use(helmet());
@@ -46,6 +44,16 @@ app.use('/api/users', userRoutes);
 app.use(notFound);
 app.use(errorHandler);
 
-app.listen(env.port, () => {
-  console.log(`Server running on port ${env.port} [${env.nodeEnv}]`);
-});
+const startServer = async () => {
+  try {
+    await connectDB();
+    app.listen(env.port, () => {
+      console.log(`Server running on port ${env.port} [${env.nodeEnv}]`);
+    });
+  } catch (error) {
+    console.error('Server failed to start:', error.message);
+    process.exit(1);
+  }
+};
+
+startServer();
